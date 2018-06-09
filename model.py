@@ -13,7 +13,7 @@ import torch.utils.data as Data
 # In[2]:
 
 f = open('data.pkl', 'rb')
-posts_ints = pickle.load(f)
+features = pickle.load(f)
 labels = pickle.load(f)
 vocab_to_int = pickle.load(f)
 f.close()
@@ -26,7 +26,6 @@ labels = np.where(labels==1)[1]
 #preparing training,test and validation datasets
 
 split_frac = 0.8
-features = np.array(posts_ints)
 num_ele=int(split_frac*len(features))
 rem_ele=len(features)-num_ele
 train_x, val_x = features[:num_ele],features[num_ele: num_ele + int(rem_ele/2)]
@@ -101,7 +100,7 @@ class RNN_CNN(nn.Module):
             self.lstm = nn.LSTM(embedding_dim, hidden_dim, batch_first=True).to(device)
 
             self.conv_1 = nn.Sequential( # in [batch, hidden_dim, 50]
-                  nn.Conv1d(in_channels=self.hidden_dim, out_channels=32, kernel_size=9, stride=1, padding=(9-1)/2),
+                  nn.Conv1d(in_channels=self.hidden_dim, out_channels=32, kernel_size=1, stride=1, padding=(1-1)/2),
                   nn.Dropout(0.5),
                   nn.ReLU(),
                   nn.MaxPool1d(kernel_size=5)
@@ -109,7 +108,7 @@ class RNN_CNN(nn.Module):
             # [batch, 32, 10]
 
             self.conv_2 = nn.Sequential(
-                  nn.Conv1d(in_channels=32, out_channels=32, kernel_size=9,stride=1, padding=(9-1)/2),
+                  nn.Conv1d(in_channels=32, out_channels=32, kernel_size=1,stride=1, padding=(1-1)/2),
                   nn.Dropout(0.5),
                   nn.ReLU(),
                   nn.MaxPool1d(kernel_size=2)
@@ -131,9 +130,9 @@ class RNN_CNN(nn.Module):
             c_t = torch.zeros(1, input.size(0)*50, self.hidden_dim).to(device)
 
             out, (h_t, c_t) = self.lstm(embeds, (h_t.detach(), c_t.detach())) #[1, batch_size*50, hidden_size
-            rnn_out = h_t.view(input.size(0), 50, self.hidden_dim) # [batch,  channel, 50*hidden_dim:256*50]
+            rnn_out = h_t.view(input.size(0), 50, self.hidden_dim) # [batch,  channel, hidden_dim]
 
-            rnn_out = rnn_out.permute(0, 2, 1)
+            rnn_out = rnn_out.permute(0, 2, 1) #[batch, channel/hidden_dim, 50]
             conv1_out = self.conv_1(rnn_out)
             conv2_out = self.conv_2(conv1_out)
 
@@ -200,11 +199,42 @@ class RNN_Linear(nn.Module):
             return out
 
 
+class RNN(nn.Module):
+      def __init__(self, embedding_dim, hidden_dim, vocab_size, tagset_size):
+            super(RNN, self).__init__()
+
+            self.hidden_dim = hidden_dim
+            self.embedding_dim = embedding_dim
+            self.word_embeddings = nn.Embedding(vocab_size, embedding_dim)
+            self.lstm = nn.LSTM(embedding_dim, hidden_dim, dropout=0.5, batch_first=True).to(device)
+            self.W = nn.Linear(hidden_dim,16).to(device)
+            # [batch, 16]
+
+      def forward(self, input):
+           #[batch, total_long]
+            embeds = self.word_embeddings(input).to(device)
+            # embeds [ seq_len:100, 50*batch, embedding_lens]
+            h_t = torch.zeros(1, input.size(0), self.hidden_dim).to(device)  # [1, batch_size, hidden_size]
+            c_t = torch.zeros(1, input.size(0), self.hidden_dim).to(device)
+            out, (h_t, c_t) = self.lstm(embeds, (h_t.detach(), c_t.detach()))  # [1, batch_size, hidden_size
+
+            out = self.W(h_t.view(input.size(0), -1))
+            out = F.log_softmax(out, dim=1)
+            return out
+
 model = RNN_CNN(embedding_dim = 128,
                 hidden_dim = 256,
-                vocab_size = 142530,
+                vocab_size = 8000,
                 tagset_size = 16)
-loss_function = nn.NLLLoss()
+
+weight = torch.tensor([0.12517929, 0.14604251, 0.17525101, 0.21906376, 0.36510627,
+       0.36510627, 0.73021254, 0.73021254, 1.09531882, 1.09531882,
+       1.09531882, 1.09531882, 2.19063763, 2.19063763, 2.19063763,
+       2.19063763]).to(device)
+weight2 = torch.tensor([0.4, 0.4, 0.4, 0.4, 0.8, 0.8, 0.8, 0.8, 1.2, 1.2, 1.2, 1.2, 1.6,
+       1.6, 1.6, 1.6]).to(device)
+
+loss_function = nn.NLLLoss(weight=weight2)
 
 def train(EPOCH = 10):
       test()

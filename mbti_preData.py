@@ -7,6 +7,7 @@
 import numpy as np
 import pandas as pd
 import pickle
+import torch
 
 
 # In[2]:
@@ -23,11 +24,11 @@ text=pd.read_csv("../input/mbti_1.csv" ,index_col='type') #type列为索引列
 from sklearn.preprocessing import LabelBinarizer
 
 # One hot encode labels
-labels=text.index.tolist()
-encoder=LabelBinarizer(neg_label=0, pos_label=1, sparse_output=False)
-labels=encoder.fit_transform(labels)#以16个不同的label为维度，one hot encode
-print(labels.shape)
-labels=np.array(labels)
+labels = text.index.tolist()
+mbti_to_int={'INFP':0, 'INFJ':1, 'INTP':2, 'INTJ':3, 'ENTP':4,'ENFP':5,'ISTP':6,'ISFP':7,'ENTJ':8,'ISTJ':9,'ENFJ':10,'ISFJ':11,'ESTP':12,'ESFP':13,'ESFJ':14,'ESTJ':15}
+labels = torch.tensor([mbti_to_int[type] for type in labels])
+labels = torch.eye(16).index_select(dim=0, index=labels)
+labels = labels.numpy()
 
 
 # In[4]:
@@ -108,7 +109,7 @@ posts_ints=[]
 for post in posts:
     thing_ints =[]
     for thing in post:
-        thing_ints.append([min(vocab_to_int[word],142530-1) for word in thing.split()])
+        thing_ints.append([min(vocab_to_int[word], 8000-1) for word in thing.split()])
     posts_ints.append(thing_ints)
 
 
@@ -175,37 +176,13 @@ for post in posts_ints:
 
 # In[11]:
 
-
+features = np.array(posts_ints, dtype = int)
 f = open('data.pkl', 'wb')
-pickle.dump(posts_ints, f)
+pickle.dump(features, f)
 pickle.dump(labels, f)
 pickle.dump(vocab_to_int,f)
 f.close()
 
-
-# In[12]:
-
-
-#preparing training,test and validation datasets
-
-split_frac = 0.8
-features = np.array(posts_ints)
-num_ele=int(split_frac*len(features))
-rem_ele=len(features)-num_ele
-train_x, val_x = features[:num_ele],features[num_ele: num_ele + int(rem_ele/2)]
-train_y, val_y = labels[:num_ele],labels[num_ele:num_ele + int(rem_ele/2)]
-
-test_x =features[num_ele + int(rem_ele/2):]
-test_y = labels[num_ele + int(rem_ele/2):]
-
-print("\t\t\tFeature Shapes:")
-print("Train set: \t\t{}".format(train_x.shape), 
-      "\nValidation set: \t{}".format(val_x.shape),
-      "\nTest set: \t\t{}".format(test_x.shape))
-#print(len(train_x)+len(val_x)+len(test_x))
-
-
-# In[29]:
 
 
 
